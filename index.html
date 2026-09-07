@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CLIMATE, RAINFALL &amp; DROUGHT INTELLIGENCE SIMULATOR</title>
+<meta name="description" content="Interactive scientific simulator for rainfall prediction, drought monitoring and extreme weather classification." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+
+<!-- ===== ANIMATED BACKGROUND ===== -->
+<div id="bg-canvas" aria-hidden="true"></div>
+<div id="aurora" aria-hidden="true"></div>
+
+<!-- ===== HEADER / NAV ===== -->
+<header class="topbar glass">
+  <div class="topbar-inner container">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 48 48" width="40" height="40" aria-hidden="true">
+          <defs>
+            <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#38bdf8"/>
+              <stop offset="1" stop-color="#34d399"/>
+            </linearGradient>
+          </defs>
+          <path d="M12 30a8 8 0 0 1-.5-15.9A11 11 0 0 1 33 18a7 7 0 0 1-3 13.4l-2-.3V34l-4 6-4-6v-3.2" fill="none" stroke="url(#g1)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M24 28v-6m0 0-3 3m3-3 3 3" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div class="brand-text">
+        <h1>Climate, Rainfall &amp; Drought <span>Intelligence Simulator</span></h1>
+        <p>2<sup>nd</sup>-Year B.Tech AIML &middot; Hydrometeorological Decision Support Reservoir</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <span id="mode-badge" class="badge badge-demo"><i class="dot"></i>DEMO MODE</span>
+      <button id="btn-run" class="btn btn-primary btn-glow">
+        <span class="btn-icon">&#9654;</span> RUN SIMULATION
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- ===== NAV PILLS ===== -->
+<nav class="pillnav container glass" id="pillnav">
+  <button class="pill active" data-target="overview">Overview</button>
+  <button class="pill" data-target="map">Map</button>
+  <button class="pill" data-target="rainfall">Rainfall</button>
+  <button class="pill" data-target="drought">Drought &amp; NDVI</button>
+  <button class="pill" data-target="extreme">Extreme Weather</button>
+  <button class="pill" data-target="compare">Comparison</button>
+  <button class="pill" data-target="correlation">Relationships</button>
+  <button class="pill" data-target="optimization">Optimization</button>
+  <button class="pill" data-target="transparency">Data &amp; Model</button>
+  <button class="pill" data-target="report">Report</button>
+</nav>
+
+<main class="container">
+
+  <!-- ===== LOCATION INPUTS ===== -->
+  <section id="inputs" class="glass panel">
+    <div class="panel-head">
+      <h2><span class="stepno">01</span> Locations &amp; Simulation Parameters</h2>
+      <div class="head-actions">
+        <span class="demo-note" title="Synthetic data for demonstration">DEMONSTRATION DATA</span>
+      </div>
+    </div>
+
+    <div class="loc-grid">
+      <div class="loc-card" data-loc="A">
+        <div class="loc-label"><span class="loc-chip chip-a">A</span> Location A</div>
+        <div class="search-wrap">
+          <input type="text" id="locA-input" class="search-input" placeholder="Search city / place (e.g. Delhi)" autocomplete="off" />
+          <div class="search-results" id="locA-results"></div>
+        </div>
+        <div class="loc-meta" id="locA-meta">
+          <span class="muted">Select a location to load coordinates</span>
+        </div>
+      </div>
+
+      <div class="loc-swap">
+        <button class="swap-btn" id="btn-swap" title="Swap locations">&#8646;</button>
+      </div>
+
+      <div class="loc-card" data-loc="B">
+        <div class="loc-label"><span class="loc-chip chip-b">B</span> Location B</div>
+        <div class="search-wrap">
+          <input type="text" id="locB-input" class="search-input" placeholder="Search city / place (e.g. Mumbai)" autocomplete="off" />
+          <div class="search-results" id="locB-results"></div>
+        </div>
+        <div class="loc-meta" id="locB-meta">
+          <span class="muted">Select a location to load coordinates</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="param-grid">
+      <div class="field">
+        <label>Historical Start</label>
+        <input type="date" id="histStart" value="2000-01-01" />
+      </div>
+      <div class="field">
+        <label>Historical End</label>
+        <input type="date" id="histEnd" value="2023-12-31" />
+      </div>
+      <div class="field">
+        <label>Prediction Horizon</label>
+        <select id="horizon">
+          <option value="1">1 month</option>
+          <option value="3" selected>3 months</option>
+          <option value="6">6 months</option>
+          <option value="12">12 months</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Analysis Mode</label>
+        <select id="analysisMode">
+          <option value="rainfall">Rainfall Prediction</option>
+          <option value="drought-mon">Drought Monitoring</option>
+          <option value="drought-pred">Drought Prediction</option>
+          <option value="extreme">Extreme Weather Classification</option>
+          <option value="complete" selected>Complete Climate Analysis</option>
+        </select>
+      </div>
+    </div>
+
+    <details class="adv-panel" id="simParamsPanel">
+      <summary><span>Simulation Parameters <em>(advanced)</em></span></summary>
+      <div class="adv-grid">
+        <div class="field"><label>Rainfall variable</label>
+          <select id="par-rain"><option>Precipitation (mm)</option><option>Precipitable water</option></select></div>
+        <div class="field"><label>Temperature variable</label>
+          <select id="par-temp"><option>T2M °C</option><option>T2M Max</option><option>T2M Min</option></select></div>
+        <div class="field"><label>NDVI source</label>
+          <select id="par-ndvi"><option>MODIS MOD13Q1</option><option>Landsat 8 OLI</option></select></div>
+        <div class="field"><label>Drought threshold (SPI)</label>
+          <input type="number" id="par-drought-th" value="-1.0" step="0.1" /></div>
+        <div class="field"><label>Extreme-event threshold</label>
+          <input type="number" id="par-extreme-th" value="95" step="1" min="50" max="100" title="Percentile threshold" /></div>
+        <div class="field"><label>Model selection</label>
+          <select id="par-model"><option value="ensemble" selected>Ensemble (RF+GB+MLP)</option><option value="rf">Random Forest</option><option value="arima">ARIMA / SARIMA</option><option value="lstm">LSTM (if available)</option></select></div>
+        <div class="field"><label>Available budget (₹ Cr)</label>
+          <input type="number" id="par-budget" value="2500" step="50" min="0" /></div>
+        <div class="field"><label>Monitoring cost (₹ Cr / site)</label>
+          <input type="number" id="par-monitor" value="8" step="1" min="0" /></div>
+        <div class="field"><label>Intervention cost (₹ Cr)</label>
+          <input type="number" id="par-intervent" value="120" step="5" min="0" /></div>
+        <div class="field"><label>Monitoring locations</label>
+          <input type="number" id="par-sites" value="14" step="1" min="1" /></div>
+        <div class="field"><label>Mitigation options</label>
+          <select id="par-mitig" multiple size="2"><option selected>Reservoir augmentation</option><option selected>Demand management</option><option>Cloud seeding</option><option>Inter-basin transfer</option></select></div>
+      </div>
+      <div class="adv-actions">
+        <button class="btn btn-ghost" id="btn-reset-params">Reset Parameters</button>
+      </div>
+    </details>
+  </section>
+
+  <!-- ===== LOADING OVERLAY ===== -->
+  <div id="sim-loading" class="loading hidden" aria-hidden="true">
+    <div class="loading-card glass">
+      <div class="spinner"></div>
+      <h3>Running simulation pipeline&#8230;</h3>
+      <ul id="loading-steps">
+        <li class="step-inactive">Ingesting meteorological dataset</li>
+        <li class="step-inactive">Preprocessing &amp; gap-filling</li>
+        <li class="step-inactive">Training rainfall ensemble model</li>
+        <li class="step-inactive">Computing NDVI &amp; drought indices</li>
+        <li class="step-inactive">Classifying extreme weather</li>
+        <li class="step-inactive">Optimizing resource &amp; cost allocation</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ===== OVERVIEW / KEY METRICS ===== -->
+  <section id="overview" class="glass panel section-target active">
+    <div class="panel-head">
+      <h2><span class="stepno">02</span> High-Level Climate Overview</h2>
+      <div class="head-actions">
+        <button class="btn btn-ghost btn-sm js-means" data-mean="overview">What does this mean?</button>
+      </div>
+    </div>
+
+    <div class="compare-banner glass-sub" id="comp-banner">
+      <div class="cb-loc">
+        <span class="loc-chip chip-a">A</span>
+        <strong id="banner-A-name">—</strong>
+        <span class="muted" id="banner-A-coord">lat, lon</span>
+      </div>
+      <div class="cb-vs">vs</div>
+      <div class="cb-loc">
+        <span class="loc-chip chip-b">B</span>
+        <strong id="banner-B-name">—</strong>
+        <span class="muted" id="banner-B-coord">lat, lon</span>
+      </div>
+    </div>
+
+    <div class="metric-section" id="metric-A-section">
+      <h3 class="metric-loc-title"><span class="loc-chip chip-a">A</span> <span id="mA-title">Location A</span></h3>
+      <div class="metric-grid" id="metric-A"></div>
+    </div>
+    <div class="metric-section" id="metric-B-section">
+      <h3 class="metric-loc-title"><span class="loc-chip chip-b">B</span> <span id="mB-title">Location B</span></h3>
+      <div class="metric-grid" id="metric-B"></div>
+    </div>
+
+    <div id="overall-risk-row"></div>
+  </section>
+
+  <!-- ===== MAP ===== -->
+  <section id="map" class="glass panel section-target">
+    <div class="panel-head">
+      <h2><span class="stepno">03</span> Interactive Climate Map</h2>
+      <div class="head-actions">
+        <button class="btn btn-ghost btn-sm js-means" data-mean="map">What does this mean?</button>
+      </div>
+    </div>
+    <div class="map-toolbar">
+      <div class="layerbtns" id="layerBtns">
+        <button class="layerbtn active" data-layer="rainfall">Rainfall</button>
+        <button class="layerbtn" data-layer="ndvi">NDVI</button>
+        <button class="layerbtn" data-layer="drought">Drought severity</button>
+        <button class="layerbtn" data-layer="temperature">Temperature</button>
+        <button class="layerbtn" data-layer="extreme">Extreme weather risk</button>
+      </div>
+      <div class="legend" id="mapLegend"></div>
+    </div>
+    <div id="leaflet-map" class="map-container"></div>
+  </section>
+
+  <!-- ===== RAINFALL ===== -->
+  <section id="rainfall" class="glass panel section-target">
+    <div class="panel-head">
+      <h2><span class="stepno">04</span> Rainfall Prediction Module</h2>
+      <div class="head-actions">
+        <button class="btn btn-ghost btn-sm js-means" data-mean="rainfall">What does this mean?</button>
+        <button class="btn btn-ghost btn-sm" id="btn-export-rainfall">Export CSV</button>
+      </div>
+    </div>
+
+    <div class="model-badges" id="rain-model-info">
+      <span class="badge">Model: <strong id="mi-model">Ensemble (RF + GBDT + MLP)</strong></span>
+      <span class="badge">Training: <strong id="mi-train">2000–2019</strong></span>
+      <span class="badge">Prediction: <strong id="mi-pred">2024–2026</strong></span>
+      <span class="badge">MAE: <strong id="mi-mae">—</strong></span>
+      <span class="badge">RMSE: <strong id="mi-rmse">—</strong></span>
+      <span class="badge">R²: <strong id="mi-r2">—</strong></span>
+    </div>
+
+    <div class="ts-controls">
+      <div class="field"><label>Resolution</label>
+        <select id="ts-resolution">
+          <option value="monthly" selected>Monthly</option>
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+          <option value="seasonal">Seasonal</option>
+          <option value="yearly">Yearly</option>
+        </select></div>
+      <div class="field"><label>From</label>
+        <input type="date" id="ts-from" /></div>
+      <div class="field"><label>To</label>
+        <input type="date" id="ts-to" /></div>
+      <div class="field"><button class="btn btn-ghost btn-sm" id="btn-apply-filter">Apply filter</button></div>
+    </div>
+
+    <div class="chart-grid two">
+      <div class="chart-card"><h4>Historical Rainfall Time Series</h4><canvas id="chart-hist-series"></canvas><p class="chart-src">Source: DEMO dataset · Predicted horizon highlighted</p></div>
+      <div class="chart-card"><h4>Historical vs Predicted Rainfall</h4><canvas id="chart-hist-pred"></canvas><p class="chart-src">Shaded region = uncertainty band</p></div>
+      <div class="chart-card"><h4>Monthly / Seasonal Rainfall Distribution</h4><canvas id="chart-monthly"></canvas><p class="chart-src">Climatological monthly means (mm)</p></div>
+      <div class="chart-card"><h4>Rainfall Anomaly</h4><canvas id="chart-anomaly"></canvas><p class="chart-src">Deviation from 2000–2023 reference climatology</p></div>
+      <div class="chart-card"><h4>Long-term Rainfall Trend</h4><canvas id="chart-trend"></canvas><p class="chart-src">Annual totals with linear trend</p></div>
+    </div>
+  </section>
+
+  <!-- ===== DROUGHT & NDVI ===== -->
+  <section id="drought" class="glass panel section-target">
+    <div class="panel-head">
+      <h2><span class="stepno">05</span> Drought Monitoring &amp; NDVI</h2>
+      <div class="head-actions">
+        <button class="btn btn-ghost btn-sm js-means" data-mean="drought">What does this mean?</button>
+      </div>
+    </div>
+
+    <div class="drought-status-grid">
+      <div class="status-card" id="drought-status-A">
+        <div class="drought-gauge" id="drought-gauge-A"></div>
+        <div class="status-body">
+          <h4><span class="loc-chip chip-a">A</span> <span id="dA-name">Location A</span></h4>
+          <div class="status-line"><span>Severity</span><strong id="dA-sev">—</strong></div>
+          <div class="status-line"><span>Drought Probability</span><strong id="dA-prob">—</strong></div>
+          <div class="status-line"><span>Trend</span><strong id="dA-trend">—</strong></div>
+        </div>
+      </div>
+      <div class="status-card" id="drought-status-B">
+        <div class="drought-gauge" id="drought-gauge-B"></div>
+        <div class="status-body">
+          <h4><span class="loc-chip chip-b">B</span> <span id="dB-name">Location B</span></h4>
+          <div class="status-line"><span>Severity</span><strong id="dB-sev">—</strong></div>
+          <div class="status-line"><span>Drought Probability</span><strong id="dB-prob">—</strong></div>
+          <div class="status-line"><span>Trend</span><strong id="dB-trend">—</strong></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="chart-grid two">
+      <div class="chart-card"><h4>NDVI Time Series</h4><canvas id="chart-ndvi"></canvas></div>
+      <div class="chart-card"><h4>NDVI Anomaly</h4><canvas id="chart-ndvi-anom"></canvas></div>
+      <div class="chart-card"><h4>Rainfall vs NDVI</h4><canvas id="chart-rain-ndvi"></canvas><p class="chart-src">Correlation shown, not causation</p></div>
+      <div class="chart-card"><h4>Temperature vs NDVI</h4><canvas id="chart-temp-ndvi"></canvas></div>
+      <div class="chart-card"><h4>Drought Index Time Series (SPI)</h4><canvas id="chart-spi"></canvas></div>
+      <div class="chart-card"><h4>Drought probability forecast</h4><canvas id="chart-drought-prob"></canvas></div>
+    </div>
+  </section>
+
+  <!-- ===== EXTREME WEATHER ===== -->
+  <section id="extreme" class="glass panel section-target">
+    <div class="panel-head">
+      <h2><span class="stepno">06</span> Extreme Weather Classification</h2>
+      <div class="head-actions">
+        <button class="btn btn-ghost btn-sm js-means" data-mean="extreme">What does this mean?</button>
+      </div>
+    </div>
+
+    <div class="extreme-results">
+      <div class="extreme-card" id="extreme-A">
+        <h4><span class="loc-chip chip-a">A</span> <span id="eA-name">Location A</span></h4>
+        <div class="ext-main"><span class="ext-label">Predicted Class</span><span class="ext-class" id="eA-class">—</span></div>
+        <div class="ext-line"><span>Probability</span><strong id="eA-prob">—</strong></div>
+        <div class="ext-line"><span>Risk Level</span><strong id="eA-risk">—</strong></div>
+        <div class="ext-line"><span>Contributing variables</span><span id="eA-contrib" class="contrib">—</span></div>
+      </div>
+      <div class="extreme-card" id="extreme-B">
+        <h4><span class="loc-chip chip-b">B</span> <span id="eB-name">Location B</span></h4>
+        <div class="ext-main"><span class="ext-label">Predicted Class</span><span class="ext-class" id="eB-class">—</span></div>
+        <div class="ext-line"><span>Probability</span><strong id="eB-prob">—</strong></div>
+        <div class="ext-line"><span>Risk Level</span><strong id="eB-risk">—</strong></div>
+        <div class="ext-line"><span>Contributing variables</span><span id="eB-contrib" class="contrib">—</span></div>
+      </div>
+    </div>
+
+    <div class="chart-grid two">
+      <div class="chart-card"><h4>Classification Probabilities</h4><canvas id="chart-ext-prob"></canvas></div>
+      <div class="chart-card"><h4>Event Frequency (Demo climatology)</h4><canvas id="chart-ext-freq"></canvas></div>
+      <div class="chart-card wide"><h4>Historical Extreme-Event Timeline</h4><canvas id="chart-ext-timeline"></canvas></div>
+    </div>
+  </section>
+
+  <!-- ===== COMPARISON ===== -->
+  <section id="compare" class="glass panel section-target">
+    <div class="panel-head">
+      <h2><span class="stepno">07</span> Location A vs Location B</h2>
+      <div class="head-actions">
+        <button class="btn btn-ghost btn-sm js-means" data-mean="compare">What does this mean?</button>
+      </div>
+    </div>
+
+    <div class="comp-table glass-sub">
+      <table>
+        <thead><tr><th>Metric</th><th>Location A</th><th>Location B</th><th>Difference</th></tr></thead>
+        <tbody id="comp-table-body"></tbody>
+      </table>
+    </div>
+
+    <div class="chart-grid two">
+      <div class="chart-card"><h4>Normalized Comparison Radar</h4><canvas id="chart-compare-radar"></canvas></div>
+      <div class="chart-card"><h4>Metric Comparison (0–100 normalized)</h4><canvas id="chart-compare-bar"></canvas></div>
+    </div>
+
+    <div class="autosummary glass-sub" id="autosummary">
+      <h4>Automatic textual summary</h4>
+      <p class="muted">Run a simulation to generate the comparison narrative.</p>
+    </div>
+  </section>
+
+  <!-- ===== OPTIMIZATION ===== -->
+  <section id="optimization" class="glass panel section-target">
+    <div class="panel-head">
+      <h2><span class="stepno">08</span> Optimal Resource &amp; Cost Analysis</h2>
+      <div class="head-actions">
+        <button class="btn btn-ghost btn-sm js-means" data-mean="optimization">What does this mean?</button>
+      </div>
+    </div>
+
+    <div class="optim-grid">
+      <div class="optim-inputs glass-sub">
+        <h4>Configuration</h4>
+        <div class="field"><label>Available budget (₹ Cr)</label><input type="number" id="opt-budget" value="2500" step="50" min="0" /></div>
+        <div class="field"><label>Monitoring cost / site (₹ Cr)</label><input type="number" id="opt-monitor" value="8" step="1" min="0" /></div>
+        <div class="field"><label>Intervention cost (₹ Cr)</label><input type="number" id="opt-intervent" value="120" step="5" min="0" /></div>
+        <div class="field"><label>Monitoring locations</label><input type="number" id="opt-sites" value="14" step="1" min="1" /></div>
+        <div class="field"><label>Expected annual loss (₹ Cr)</label><input type="number" id="opt-loss" value="640" step="10" min="0" /></div>
+        <div class="field"><label>Risk reduction target (%)</label><input type="number" id="opt-target" value="35" step="5" min="0" max="100" /></div>
+        <button class="btn btn-primary btn-block" id="btn-run-opt">Optimize Allocation</button>
+        <p class="note">Frontend interface only — plug your existing optimization code into <code>/optimization</code>.</p>
+      </div>
+
+      <div class="optim-results">
+        <div class="optim-stats">
+          <div class="op-stat"><span>Current estimated cost</span><strong id="op-current">—</strong></div>
+          <div class="op-stat"><span>Optimized cost</span><strong id="op-optimized">—</strong></div>
+          <div class="op-stat good"><span>Cost savings</span><strong id="op-savings">—</strong></div>
+          <div class="op-stat good"><span>Risk reduction</span><strong id="op-riskred">—</strong></div>
+        </div>
+        <div class="chart-card"><h4>Before vs After Optimization</h4><canvas id="chart-opt"></canvas></div>
+        <div class="alloc card-inline" id="op-alloc"><span class="muted">Recommended allocation will appear here after optimization.</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== CORRELATION ===== -->
+  <section id="correlation" class="glass panel section-target">
+    <div class="panel-head">
+      <h2><span class="stepno">09</span> Climate Variable Relationships</h2>
+      <div class="head-actions"><button class="btn btn-ghost btn-sm js-means" data-mean="correlation">What does this mean?</button></div>
+    </div>
+    <div class="chart-grid two">
+      <div class="chart-card"><h4>Correlation Matrix</h4><canvas id="chart-corr-matrix"></canvas></div>
+      <div class="chart-card"><h4>Rainfall ↔ NDVI scatter</h4><canvas id="chart-scatter-rainnd"></canvas></div>
+      <div class="chart-card"><h4>Temperature ↔ NDVI scatter</h4><canvas id="chart-scatter-tempnd"></canvas></div>
+      <div class="chart-card wide"><p class="note">Rainfall–Drought, Temperature–Drought and Rainfall–Extreme-event relationships are summarised in the correlation matrix with values reported only where the underlying sample supports them. Correlation does not imply causation.</p></div>
+    </div>
+  </section>
+
+  <!-- ===== TRANSPARENCY ===== -->
+  <section id="transparency" class="glass panel section-target">
+    <div class="panel-head">
+      <h2><span class="stepno">10</span> Data &amp; Model Transparency</h2>
+      <div class="head-actions">
+        <span class="badge badge-demo"><i class="dot"></i>DEMO DATA — Replace with project dataset</span>
+      </div>
+    </div>
+    <div class="transparency-grid">
+      <div class="glass-sub"><h4>Dataset</h4>
+        <dl>
+          <dt>Dataset name</dt><dd>CRIDS Demo Climatology v0.1</dd>
+          <dt>Source</dt><dd>Synthetic — parameterised by climate norms (see code)</dd>
+          <dt>Time period</dt><dd id="tr-period">2000-01-01 → 2023-12-31</dd>
+          <dt>Spatial resolution</dt><dd>Point (city-scale)</dd>
+          <dt>Temporal resolution</dt><dd>Daily → aggregated monthly</dd>
+          <dt>Observations</dt><dd id="tr-obs">8 766 / location</dd>
+        </dl>
+      </div>
+      <div class="glass-sub"><h4>Features &amp; preprocessing</h4>
+        <dl>
+          <dt>Features used</dt><dd>temperature, humidity, pressure, wind speed, AOD, SST anomaly, NDVI/EVI/GCI</dd>
+          <dt>Target variable</dt><dd>Precipitation (mm) · SPI-3 · Drought class · Extreme-event class</dd>
+          <dt>Missing-value treatment</dt><dd>Linear interpolation + climatological fill</dd>
+          <dt>Scaling</dt><dd>StandardScaler (z-score)</dd>
+        </dl>
+      </div>
+      <div class="glass-sub"><h4>Models</h4>
+        <dl>
+          <dt>Rainfall model</dt><dd id="tr-model">Ensemble RF + GBDT + MLP (weights 0.4/0.4/0.2)</dd>
+          <dt>Training period</dt><dd id="tr-train">2000–2019</dd>
+          <dt>Testing period</dt><dd id="tr-test">2020–2023</dd>
+          <dt>Metrics</dt><dd id="tr-metrics">MAE / RMSE / R² reported after each run</dd>
+        </dl>
+      </div>
+      <div class="glass-sub"><h4>Ethics &amp; limitations</h4>
+        <p class="note">All values on this page are <strong>demonstration data</strong> generated to illustrate the scientific interface. No metric should be interpreted as a real observation or forecast. Outputs never imply flood/event occurrence without backend evidence.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== REPORT ===== -->
+  <section id="report" class="glass panel section-target">
+    <div class="panel-head">
+      <h2><span class="stepno">11</span> Report &amp; Export</h2>
+    </div>
+    <div class="report-actions">
+      <button class="btn btn-primary" id="btn-report">GENERATE REPORT</button>
+      <button class="btn btn-ghost" id="btn-csv">Export CSV (rainfall)</button>
+      <button class="btn btn-ghost" id="btn-csv-full">Export CSV (all metrics)</button>
+      <button class="btn btn-ghost" id="btn-print">Print / PDF</button>
+    </div>
+    <div id="report-output" class="report-output hidden"></div>
+  </section>
+
+  <footer class="footer">
+    <p>CRIDS — Climate, Rainfall &amp; Drought Intelligence Simulator · B.Tech AIML · Academic research project</p>
+    <p class="muted">Modular API contract: <code>/location</code> <code>/historical-data</code> <code>/rainfall-prediction</code> <code>/drought-analysis</code> <code>/ndvi-analysis</code> <code>/extreme-events</code> <code>/comparison</code> <code>/optimization</code> <code>/report</code></p>
+  </footer>
+</main>
+
+<!-- ===== MEANING MODAL ===== -->
+<div id="meaning-modal" class="modal hidden">
+  <div class="modal-card glass">
+    <button class="modal-close" id="modal-close">&times;</button>
+    <h3 id="modal-title">What does this mean?</h3>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<script src="js/data.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
