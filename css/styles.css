@@ -545,6 +545,19 @@ td.metric-name { font-family: var(--font-body); color: var(--text); font-weight:
 .alloc .alloc-line { display: flex; justify-content: space-between; padding: 4px 0; }
 .alloc .alloc-line span:first-child { color: var(--text-dim); }
 
+/* ---------- Water channeling routes ---------- */
+.route-banner { margin-bottom: 16px; padding: 16px 20px; }
+.route-banner .route-flow { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; font-size: 0.95rem; }
+.route-banner .route-arrow { color: var(--accent); font-family: var(--font-mono); font-size: 1.15rem; }
+.route-banner .route-dir { color: var(--text-dim); font-size: 0.8rem; margin-top: 6px; }
+.route-config { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; padding: 16px 20px; margin-bottom: 16px; }
+.route-config .field { min-width: 170px; }
+.stat-inline { font-family: var(--font-mono); font-size: 0.9rem; color: var(--accent2); }
+.route-stats { display: grid; grid-template-columns: repeat(auto-fit,minmax(150px,1fr)); gap: 12px; margin-bottom: 16px; }
+.route-profile { padding: 6px 2px; }
+.route-profile p { font-size: 0.82rem; line-height: 1.7; color: var(--text-dim); }
+.route-profile table { font-size: 0.82rem; }
+
 /* ---------- Transparency ---------- */
 .transparency-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(300px,1fr)); gap: 16px; }
 .glass-sub h4 { font-family: var(--font-display); font-size: 0.85rem; margin-bottom: 12px; color: var(--accent); }

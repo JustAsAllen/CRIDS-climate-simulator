@@ -262,3 +262,97 @@ CRIDS.severityIndex = {
   "Severe": 0.76,
   "Extreme": 0.93
 };
+
+/* ============================================================================
+   Water channeling module (matches the Colab WaterChannelingSystem logic)
+   ========================================================================== */
+
+/* Great-circle distance (Haversine) in km. */
+CRIDS.haversineKm = function (lat1, lon1, lat2, lon2) {
+  const R = 6371, toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
+};
+
+/* Unit cost assumptions mirrored from InfrastructureCostEstimator.COSTS. */
+CRIDS.WATER_COSTS = {
+  canal_construction: 5e6,     // ₹ INR / km
+  pipeline_construction: 3e6,  // ₹ INR / km
+  storage_reservoir: 1e7,      // ₹ INR per million m³
+  treatment_plant: 5e7,        // ₹ INR per million m³/day
+  pump_installation: 1e6,      // ₹ INR per pump
+  maintenance_annual: 0.05,    // fraction of capital cost per year
+  labor: 3e5                   // ₹ INR per project
+};
+
+function crRouteArc(p1, p2, n) {
+  const lat1 = p1.lat, lon1 = p1.lon, lat2 = p2.lat, lon2 = p2.lon;
+  const dLat = lat2 - lat1, dLon = lon2 - lon1;
+  const len = Math.hypot(dLat, dLon) || 1;
+  const km = CRIDS.haversineKm(lat1, lon1, lat2, lon2);
+  const bend = Math.min(4.5, Math.max(1.2, km * 0.015));
+  const pts = [];
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    let lat = lat1 + dLat * t;
+    let lon = lon1 + dLon * t;
+    const off = Math.sin(Math.PI * t) * bend;
+    pts.push([lat + (-dLon / len) * off, lon + (dLat / len) * off]);
+  }
+  return pts;
+}
+
+/* Build the single surplus→deficit water-transfer route between the two
+   simulated stations. Uses recent rainfall balance to pick source/destination,
+   then estimates distance, transferable volume and component costs. */
+CRIDS.buildWaterRoute = function (ra, rb, opts) {
+  opts = opts || {};
+  const surplusMm = ra.recentRain - rb.recentRain;
+  const src = surplusMm > 0 ? ra : rb;
+  const dst = surplusMm > 0 ? rb : ra;
+  const balanceMm = Math.abs(surplusMm);
+
+  const basinAreaKm2 = opts.basinAreaKm2 || 800;
+  const method = opts.method || "hybrid";
+  const distanceKm = CRIDS.haversineKm(src.station.place.lat, src.station.place.lon, dst.station.place.lat, dst.station.place.lon);
+  const waterVolumeM3 = balanceMm * basinAreaKm2 * 1e3;   // mm over km² → m³
+  const capacityMm3Day = waterVolumeM3 / 365 / 1e6;
+
+  const C = CRIDS.WATER_COSTS;
+  const constrRate = method === "canal" ? C.canal_construction
+    : method === "pipeline" ? C.pipeline_construction
+    : (C.canal_construction + C.pipeline_construction) / 2;
+  const construction = distanceKm * constrRate;
+  const storageCost = (waterVolumeM3 / 1e6) * C.storage_reservoir;
+  const treatmentCost = (waterVolumeM3 / 1e6 / 365) * C.treatment_plant;
+  const numPumps = Math.max(1, Math.round(distanceKm / 50));
+  const pumpCost = numPumps * C.pump_installation;
+  const labor = C.labor;
+  const capital = construction + storageCost + treatmentCost + pumpCost + labor;
+  const annualMaintenance = capital * C.maintenance_annual;
+
+  const components = [
+    { name: "Conveyance (" + method + ")", desc: distanceKm.toFixed(0) + " km × ₹" + (constrRate / 1e6).toFixed(1) + "M/km", cost: construction },
+    { name: "Storage", desc: (waterVolumeM3 / 1e6).toFixed(0) + " M m³ reservoir", cost: storageCost },
+    { name: "Treatment", desc: capacityMm3Day.toFixed(1) + " M m³/day plant", cost: treatmentCost },
+    { name: "Pump stations", desc: numPumps + " stations @ 1 per 50 km", cost: pumpCost },
+    { name: "Labor / project", desc: "installation & commissioning", cost: labor }
+  ];
+
+  return {
+    src: { analysis: src }, dst: { analysis: dst },
+    sourceLoc: src.station.place,
+    destLoc: dst.station.place,
+    sourceRain: src.recentRain,
+    destRain: dst.recentRain,
+    balanceMm: balanceMm,
+    distanceKm, waterVolumeM3, capacityMm3Day,
+    method, basinAreaKm2,
+    construction, storageCost, treatmentCost, pumpCost, labor,
+    capital, annualMaintenance, components,
+    arc: crRouteArc(src.station.place, dst.station.place, 24),
+    surplusPositive: surplusMm > 0
+  };
+};

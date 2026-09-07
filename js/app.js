@@ -653,7 +653,7 @@ function hsl(h, s, l) { return `hsl(${h},${s}%,${l}%)`; }
 function drawLayer(field) {
   const map = CRIDS.state.map;
   const res = CRIDS.state.results;
-  map.eachLayer((l) => { if (l instanceof L.CircleMarker) map.removeLayer(l); });
+  map.eachLayer((l) => { if (l instanceof L.CircleMarker && !(l.options && l.options._route)) map.removeLayer(l); });
   const grp = L.layerGroup().addTo(map);
   const { pts, va, vb } = interpolateGrid(res.A, res.B, field);
   pts.forEach((p) => {
@@ -729,6 +729,7 @@ async function runSimulation() {
   renderDroughtCharts();
   renderExtremeCharts();
   renderCompare();
+  renderWaterRoutes();
   renderCorrelation();
   renderTransparency();
   runOptimization();
@@ -1168,6 +1169,121 @@ function renderCompare() {
   out.innerHTML = parts.join("");
 }
 
+/* ---------------------------------------------------------------- Water channeling */
+function destroyChart(id) {
+  const idx = CRIDS.charts.registry.findIndex((c) => c.canvas.id === id);
+  if (idx >= 0) {
+    try { CRIDS.charts.registry[idx].destroy(); } catch (e) {}
+    CRIDS.charts.registry.splice(idx, 1);
+  }
+}
+
+function crClock(v) { return "₹" + (v / 1e7).toFixed(1) + " Cr"; }
+function crM3(v) { return v >= 1e9 ? (v / 1e9).toFixed(2) + " B m³" : (v / 1e6).toFixed(0) + " M m³"; }
+
+function renderWaterRoutes() {
+  const res = CRIDS.state.results;
+  if (!res) return;
+  const method = $("route-method").value;
+  const basin = parseFloat($("route-basin").value) || 800;
+  const route = CRIDS.buildWaterRoute(res.A, res.B, { method, basinAreaKm2: basin });
+  CRIDS.state.route = route;
+
+  $("route-banner").innerHTML = `
+    <div class="route-flow">
+      <span class="rloc"><b>${route.sourceLoc.name}</b> <span class="muted">(surplus source)</span></span>
+      <span class="route-arrow">&#10142;</span>
+      <span class="rloc"><b>${route.destLoc.name}</b> <span class="muted">(deficit destination)</span></span>
+      <span class="badge" style="margin-left:2px">${route.method} corridor</span>
+    </div>
+    <p class="route-dir">Why? ${route.sourceLoc.name} has a <b>${route.balanceMm.toFixed(0)} mm/yr</b> rainfall surplus over ${route.destLoc.name} (${route.sourceRain.toFixed(0)} vs ${route.destRain.toFixed(0)} mm/yr). Transferring <b>${crM3(route.waterVolumeM3)}/yr</b> along a ${route.distanceKm.toFixed(0)} km route needs the capital works below.</p>
+    <button class="btn btn-ghost btn-sm" id="btn-focus-route">Focus route on map</button>`;
+  if ($("btn-focus-route")) $("btn-focus-route").addEventListener("click", () => focusRoute(route));
+
+  $("route-dist").textContent = route.distanceKm.toFixed(0) + " km";
+  $("route-vol").textContent = crM3(route.waterVolumeM3);
+
+  $("route-stats").innerHTML = [
+    ["Route distance", route.distanceKm.toFixed(0) + " km"],
+    ["Transferable volume", crM3(route.waterVolumeM3)],
+    ["Capacity", route.capacityMm3Day.toFixed(2) + " M m³/day"],
+    ["Capital cost", crClock(route.capital)],
+    ["Annual maintenance", crClock(route.annualMaintenance)]
+  ].map(([k, v]) => `<div class="op-stat"><span>${k}</span><strong>${v}</strong></div>`).join("");
+
+  const compRows = route.components.map((c) =>
+    `<tr><td class="metric-name">${c.name}</td><td>${c.desc}</td><td>${crClock(c.cost)}</td></tr>`).join("");
+  $("route-profile").innerHTML = `
+    <p><b>${route.distanceKm.toFixed(0)} km</b> corridor from <b>${route.sourceLoc.name}</b> to <b>${route.destLoc.name}</b>, conveying <b>${crM3(route.waterVolumeM3)}/yr</b> (${route.capacityMm3Day.toFixed(2)} M m³/day) via ${route.method} conveyance.</p>
+    <table>
+      <thead><tr><th>Component</th><th>Specification</th><th>Cost (₹)</th></tr></thead>
+      <tbody>
+        ${compRows}
+        <tr><td class="metric-name">Total capital</td><td>construction + systems</td><td><b>${crClock(route.capital)}</b></td></tr>
+        <tr><td class="metric-name">Annual maintenance</td><td>5% of capital / yr</td><td>${crClock(route.annualMaintenance)}</td></tr>
+      </tbody>
+    </table>`;
+
+  destroyChart("chart-route-cost");
+  destroyChart("chart-route-pie");
+  CRIDS.charts.bar($("chart-route-cost"), route.components.map((c) => c.name), [
+    {
+      label: "Cost (₹ Cr)",
+      data: route.components.map((c) => +(c.cost / 1e7).toFixed(1)),
+      backgroundColor: ["#22d3ee", "#818cf8", "#a78bfa", "#38bdf8", "#34d399"].slice(0, route.components.length),
+      borderRadius: 4
+    }
+  ], { legend: false, scales: CRIDS.charts.axes({ ytitle: "₹ Crore", zero: true, xticks: 5 }) });
+  CRIDS.charts.doughnut($("chart-route-pie"),
+    ["Capital", "Annual maintenance"],
+    [+(route.capital / 1e7).toFixed(1), +(route.annualMaintenance / 1e7).toFixed(1)],
+    ["#22d3ee", "#f59e0b"], { legendPos: "right" });
+
+  if (CRIDS.state.map) drawRouteOnMap(CRIDS.state.map, route);
+}
+
+function drawRouteOnMap(map, route) {
+  if (map._routeGroup) { map.removeLayer(map._routeGroup); map._routeGroup = null; }
+  if (map._routeAnim) { clearInterval(map._routeAnim); map._routeAnim = null; }
+  const ll = route.arc;
+  if (!ll || ll.length < 2) return;
+
+  const grp = L.layerGroup().addTo(map);
+  map._routeGroup = grp;
+
+  L.polyline(ll, { color: "#22d3ee", weight: 3, opacity: 0.9, dashArray: "1 7", lineCap: "round" })
+    .bindTooltip(route.sourceLoc.name + " → " + route.destLoc.name, { direction: "center", className: "route-tip" })
+    .addTo(grp);
+
+  const arrowAt = Math.min(ll.length - 1, Math.floor(ll.length * 0.72));
+  L.marker(ll[arrowAt], {
+    icon: L.divIcon({ className: "route-arrow-icon", html: "&#9654;", iconSize: [18, 18], iconAnchor: [9, 9] })
+  }).addTo(grp);
+
+  const src = L.circleMarker(ll[0], { radius: 8, color: "#fff", weight: 1.5, fillColor: "#38bdf8", fillOpacity: 1, _route: true }).addTo(grp);
+  const dst = L.circleMarker(ll[ll.length - 1], { radius: 8, color: "#fff", weight: 1.5, fillColor: "#34d399", fillOpacity: 1, _route: true }).addTo(grp);
+  src.bindTooltip("SOURCE<br>" + route.sourceLoc.name, { direction: "right" });
+  dst.bindTooltip("DESTINATION<br>" + route.destLoc.name, { direction: "left" });
+
+  const dot = L.circleMarker(ll[0], { radius: 4, color: "#fff", weight: 1, fillColor: "#22d3ee", fillOpacity: 0.95, _route: true, zIndexOffset: 1000 }).addTo(grp);
+  let t = 0;
+  map._routeAnim = window.setInterval(() => {
+    t = (t + 0.008) % 1;
+    const seg = t * (ll.length - 1);
+    const i = Math.min(ll.length - 2, Math.floor(seg));
+    const f = seg - i;
+    const a = ll[i], b = ll[i + 1];
+    dot.setLatLng([a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]);
+  }, 120);
+}
+
+function focusRoute(route) {
+  const map = CRIDS.state.map;
+  if (!map) return;
+  map.fitBounds(L.latLngBounds(route.arc).pad(0.35));
+  activateSection("map");
+}
+
 /* ---------------------------------------------------------------- Correlation */
 function renderCorrelation() {
   const res = CRIDS.state.results;
@@ -1396,7 +1512,54 @@ $("btn-csv-full").addEventListener("click", () => {
   download("crids-metrics.csv", toCSV(rows));
 });
 
+$("btn-export-routes").addEventListener("click", () => {
+  const route = CRIDS.state.route;
+  if (!route) { CRIDS.toast("Run a simulation first.", "err"); return; }
+  const rows = [
+    ["Water Channeling Route — CRIDS DEMO DATA"],
+    ["Source", route.sourceLoc.name],
+    ["Destination", route.destLoc.name],
+    ["Reason", route.balanceMm.toFixed(0) + " mm/yr rainfall surplus"],
+    ["Distance (km)", route.distanceKm.toFixed(1)],
+    ["Transfer volume (m3/yr)", route.waterVolumeM3.toFixed(0)],
+    ["Capacity (M m3/day)", route.capacityMm3Day.toFixed(2)],
+    ["Conveyance", route.method],
+    [],
+    ["Component", "Specification", "Cost (INR)"]
+  ];
+  route.components.forEach((c) => rows.push([c.name, c.desc, Math.round(c.cost)]));
+  rows.push(["Total capital", "construction + systems", Math.round(route.capital)]);
+  rows.push(["Annual maintenance", "5% of capital/yr", Math.round(route.annualMaintenance)]);
+  download("crids-water-route.csv", toCSV(rows));
+});
+
+function recalcRoute() {
+  if (!CRIDS.state.results) return;
+  renderWaterRoutes();
+}
+let routeTimer = null;
+$("route-method").addEventListener("change", recalcRoute);
+$("route-basin").addEventListener("input", () => { clearTimeout(routeTimer); routeTimer = window.setTimeout(recalcRoute, 350); });
+$("btn-route-recalc").addEventListener("click", recalcRoute);
+
 /* ---------------------------------------------------------------- Report */
+function buildReportRoute() {
+  const route = CRIDS.state && CRIDS.state.route;
+  if (!route) return "";
+  const cap = (v) => "₹" + (v / 1e7).toFixed(1) + " Cr";
+  return `<h2>7B. Water channeling route</h2>
+  <table><tr><th>Indicator</th><th>Value</th></tr>
+    <tr><td>Source (surplus)</td><td>${route.sourceLoc.name}</td></tr>
+    <tr><td>Destination (deficit)</td><td>${route.destLoc.name}</td></tr>
+    <tr><td>Distance</td><td>${route.distanceKm.toFixed(0)} km</td></tr>
+    <tr><td>Rainfall surplus</td><td>${route.balanceMm.toFixed(0)} mm/yr</td></tr>
+    <tr><td>Transferable volume</td><td>${crM3(route.waterVolumeM3)}/yr (${route.capacityMm3Day.toFixed(2)} M m³/day)</td></tr>
+    <tr><td>Conveyance</td><td>${route.method}</td></tr>
+    <tr><td>Total capital</td><td>${cap(route.capital)}</td></tr>
+    <tr><td>Annual maintenance</td><td>${cap(route.annualMaintenance)}</td></tr></table>
+  <p class="muted">Unit-rate estimate following WaterChannelingSystem / InfrastructureCostEstimator logic.</p>`;
+}
+
 $("btn-report").addEventListener("click", () => {
   const res = CRIDS.state.results;
   if (!res) { CRIDS.toast("Run a simulation first.", "err"); return; }
@@ -1483,6 +1646,8 @@ function buildReport(print) {
   </table>
   <div class="banner">${$("autosummary").innerText.slice(0, 320)}&#8230;</div>
 
+  ${buildReportRoute()}
+
   <h2>8. Optimization results</h2>
   <table><tr><th>Indicator</th><th>Value</th></tr>
     <tr><td>Current cost</td><td>${$("op-current").textContent}</td></tr>
@@ -1532,6 +1697,7 @@ const MEANINGS = {
   drought: ["What does this mean?", "NDVI (Normalized Difference Vegetation Index) is a satellite vegetation index: high values indicate dense green vegetation, low values indicate stress or bare ground. SPI (Standardized Precipitation Index) summarises precipitation deficit in standard-deviation units — values below <code>-1.0</code> indicate moderate drought."],
   extreme: ["What does this mean?", "The classifier assigns each station the most probable class (Normal / Extreme Heat / Extreme Rainfall / Drought / Flood-prone rainfall) from climate thresholds in the data. Note the interface deliberately says <em>extreme rainfall conditions</em>, not floods — classification depends on the model's defined thresholds/features."],
   compare: ["What does this mean?", "The comparison dashboard normalises each metric between the two locations and visualises the relative difference. The radar chart makes the overall risk profile instantly readable. The textual summary is generated <em>only</em> from the calculated values on this page."],
+  routes: ["What does this mean?", "Water channeling identifies the wetter (surplus) station as the water <em>source</em> and the drier (deficit) station as the <em>destination</em>. It then estimates the great-circle distance, the transferable annual volume (rainfall surplus &times; catchment area), and the capital + annual maintenance cost of a canal / pipeline / hybrid corridor — the same logic as the Colab WaterChannelingSystem. The dashed line on the map shows the corridor; the moving dot indicates the flow direction. Costs are unit-rate estimates, not quotations."],
   correlation: ["What does this mean?", "The correlation matrix shows Pearson correlations between climate variables (values from −1 to +1). A high correlation means the variables move together in this sample — it does <em>not</em> prove one causes the other."],
   optimization: ["What does this mean?", "This is a frontend stub that demonstrates the resource-allocation concept. It currently runs a transparent risk-weighted heuristic. Your existing optimisation / optimal-cost algorithm can replace it by posting to <code>/optimization</code> — see the API contract in the footer."]
 };

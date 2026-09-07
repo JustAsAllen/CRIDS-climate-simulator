@@ -55,6 +55,7 @@
   <button class="pill" data-target="drought">Drought &amp; NDVI</button>
   <button class="pill" data-target="extreme">Extreme Weather</button>
   <button class="pill" data-target="compare">Comparison</button>
+  <button class="pill" data-target="routes">Water Routes</button>
   <button class="pill" data-target="correlation">Relationships</button>
   <button class="pill" data-target="optimization">Optimization</button>
   <button class="pill" data-target="transparency">Data &amp; Model</button>
@@ -375,6 +376,43 @@
     <div class="autosummary glass-sub" id="autosummary">
       <h4>Automatic textual summary</h4>
       <p class="muted">Run a simulation to generate the comparison narrative.</p>
+    </div>
+  </section>
+
+  <!-- ===== WATER CHANNELING ROUTES ===== -->
+  <section id="routes" class="glass panel section-target">
+    <div class="panel-head">
+      <h2><span class="stepno">07B</span> Water Channeling Routes</h2>
+      <div class="head-actions">
+        <button class="btn btn-ghost btn-sm js-means" data-mean="routes">What does this mean?</button>
+        <button class="btn btn-ghost btn-sm" id="btn-export-routes">Export CSV</button>
+      </div>
+    </div>
+
+    <div class="route-banner glass-sub" id="route-banner">
+      <p class="muted">Run a simulation to compute the surplus → deficit water-transfer route and its costs.</p>
+    </div>
+
+    <div class="route-config glass-sub">
+      <div class="field"><label>Conveyance method</label>
+        <select id="route-method">
+          <option value="hybrid" selected>Hybrid (canal + pipeline)</option>
+          <option value="canal">Open canal</option>
+          <option value="pipeline">Buried pipeline</option>
+        </select>
+      </div>
+      <div class="field"><label>Catchment area (km²)</label><input type="number" id="route-basin" value="800" step="50" min="1" /></div>
+      <div class="field"><label>Distance</label><span class="stat-inline" id="route-dist">—</span></div>
+      <div class="field"><label>Transfer volume</label><span class="stat-inline" id="route-vol">—</span></div>
+      <button class="btn btn-primary" id="btn-route-recalc">Recalculate Route</button>
+    </div>
+
+    <div class="route-stats" id="route-stats"></div>
+
+    <div class="chart-grid two">
+      <div class="chart-card"><h4>Cost Breakdown by Component</h4><canvas id="chart-route-cost"></canvas></div>
+      <div class="chart-card"><h4>Capital vs Annual Maintenance</h4><canvas id="chart-route-pie"></canvas></div>
+      <div class="chart-card wide"><h4>Route Profile</h4><div id="route-profile" class="route-profile"></div></div>
     </div>
   </section>
 
